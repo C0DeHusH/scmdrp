@@ -6,7 +6,7 @@ st.set_page_config(page_title="SCM Delivery Requirements Plan", layout="wide")
 st.title("SCM Delivery Requirements Plan")
 st.markdown("---")
 
-# --- Initialize Session State for Master Data (FULL LIST) ---
+# --- Initialize Session State for Master Data ---
 if 'items_df' not in st.session_state:
     st.session_state.items_df = pd.DataFrame([
         {"Item Description": "ACCESS 125", "Index Size": 1.0},
@@ -199,7 +199,7 @@ with tab1:
     with st.container():
         st.subheader("1. Select Initial Truck")
         primary_truck = st.selectbox("Assign Primary Truck for this Route:", st.session_state.trucks_df["Truck Desc"].tolist(), label_visibility="collapsed")
-        truck_capacity = st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0]
+        truck_capacity = float(st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0])
     
     st.markdown("---")
     
@@ -264,7 +264,10 @@ with tab1:
     
     total_index = 0
     if not valid_entries.empty:
+        # Convert Qty to numeric just in case
+        valid_entries["Qty"] = pd.to_numeric(valid_entries["Qty"], errors='coerce').fillna(0)
         valid_entries = valid_entries[valid_entries["Qty"] > 0]
+        
         valid_entries = valid_entries.merge(st.session_state.items_df, how="left", left_on="Item", right_on="Item Description")
         valid_entries["Total Index"] = valid_entries["Qty"] * valid_entries["Index Size"]
         total_index = valid_entries["Total Index"].sum()
@@ -289,9 +292,18 @@ with tab1:
     st.markdown("---")
     st.subheader("4. Real-Time Capacity Status")
     
+    # Visual Delta Calculation for instant UI feedback
+    remaining_cap = truck_capacity - total_index
+    if remaining_cap >= 0:
+        delta_label = f"{remaining_cap:.2f} Remaining Space"
+        delta_color = "normal"
+    else:
+        delta_label = f"{-remaining_cap:.2f} Over Capacity"
+        delta_color = "inverse"
+    
     with st.container(border=True):
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Load Index", f"{total_index:.2f}")
+        col1.metric("Total Load Index", f"{total_index:.2f}", delta=delta_label, delta_color=delta_color)
         col2.metric("Initial Truck Status", status)
         col3.metric("Spillover Index (Unassigned)", f"{spillover:.2f}")
         col4.metric("Auto-Assigned Additional Truck", auto_truck)
