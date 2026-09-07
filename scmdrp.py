@@ -213,20 +213,20 @@ with tab1:
         with c1:
             # Dropdown 1: Area
             unique_areas = sorted(st.session_state.branches_df['Area'].unique())
-            sel_area = st.selectbox("1. Select Area", unique_areas)
+            sel_area = st.selectbox("Select Area", unique_areas)
             
         with c2:
             # Dropdown 2: Branch (Cascading - Filtered by Area)
             filtered_branches = st.session_state.branches_df[st.session_state.branches_df['Area'] == sel_area]['Branches'].tolist()
-            sel_branch = st.selectbox("2. Select Branch", filtered_branches)
+            sel_branch = st.selectbox("Select Branch", filtered_branches)
             
         with c3:
             # Dropdown 3: Item
-            sel_item = st.selectbox("3. Select Item", st.session_state.items_df["Item Description"].tolist())
+            sel_item = st.selectbox("Select Item", st.session_state.items_df["Item Description"].tolist())
             
         with c4:
             # Input 4: Quantity
-            sel_qty = st.number_input("4. Qty", min_value=1, step=1, value=1)
+            sel_qty = st.number_input("Qty", min_value=1, step=1, value=1)
             
         with c5:
             st.write("") # Vertical spacing alignment
