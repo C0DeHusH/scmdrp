@@ -292,22 +292,26 @@ with tab1:
     st.markdown("---")
     st.subheader("4. Real-Time Capacity Status")
     
-    # Visual Delta Calculation for instant UI feedback
+    # Calculate metrics for visuals
     remaining_cap = truck_capacity - total_index
-    if remaining_cap >= 0:
-        delta_label = f"{remaining_cap:.2f} Remaining Space"
-        delta_color = "normal"
-    else:
-        delta_label = f"{-remaining_cap:.2f} Over Capacity"
-        delta_color = "inverse"
+    utilization_pct = min(total_index / truck_capacity, 1.0) if truck_capacity > 0 else 0.0
     
+    # 1. High-visibility status banners instead of tiny delta text
+    if remaining_cap >= 0:
+        st.success(f"✅ **Space Available:** {remaining_cap:.2f} Index Units Remaining (Max Capacity: {truck_capacity})")
+    else:
+        st.error(f"🚨 **Overloaded:** {-remaining_cap:.2f} Index Units Over Capacity (Max Capacity: {truck_capacity})")
+        
+    # 2. Visual Progress Bar
+    st.progress(utilization_pct, text=f"Truck Utilization: {int(total_index / truck_capacity * 100)}%")
+    
+    # 3. Clean metrics without the hard-to-read delta
     with st.container(border=True):
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Load Index", f"{total_index:.2f}", delta=delta_label, delta_color=delta_color)
+        col1.metric("Total Load Index", f"{total_index:.2f}")
         col2.metric("Initial Truck Status", status)
-        col3.metric("Spillover Index (Unassigned)", f"{spillover:.2f}")
-        col4.metric("Auto-Assigned Additional Truck", auto_truck)
-    
+        col3.metric("Spillover Index", f"{spillover:.2f}")
+        col4.metric("Auto-Assigned Truck", auto_truck)
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
     with c1:
