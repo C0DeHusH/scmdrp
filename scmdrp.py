@@ -182,12 +182,15 @@ if 'branches_df' not in st.session_state:
         {"Branches": "MUTI CABADBARAN", "Area": "AREA VI"}
     ])
 
+# Added "Area" to Weekly Plan Tracking
 if 'weekly_plan' not in st.session_state:
-    st.session_state.weekly_plan = pd.DataFrame(columns=["Date", "Initial Truck", "Spillover Truck", "Total Index Load"])
+    st.session_state.weekly_plan = pd.DataFrame(columns=[
+        "Date", "Initial Truck", "Area", "Branch", "Unit Allocated", "Quantity", "Spillover Truck", "Total Index Load"
+    ])
 
 if 'planner_input' not in st.session_state:
-    # Pre-populate with 5 empty rows for Excel-like intuitive entry
-    st.session_state.planner_input = pd.DataFrame([{"Branch": None, "Item": None, "Qty": 0} for _ in range(5)])
+    # Start with an empty list instead of pre-populating, since we now have an Add Bar
+    st.session_state.planner_input = []
 
 # --- Create Application Tabs ---
 tab1, tab2, tab3 = st.tabs(["📋 Daily Dispatch Planner", "📅 Weekly Allocation Summary", "⚙️ Master Data Management"])
@@ -200,28 +203,75 @@ with tab1:
     primary_truck = st.selectbox("Select Initial Truck:", st.session_state.trucks_df["Truck Desc"].tolist())
     truck_capacity = st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0]
     
-    st.markdown("### Loadout Data Entry")
-    st.caption("Select branches and items below. The grid will automatically add new rows as you type, just like Excel.")
+    st.markdown("### 1. Add Items to Loadout")
+    st.caption("Select an Area to filter the Branches, pick an item, and click Add.")
     
-    # 2. Excel-Style Input Grid
-    edited_df = st.data_editor(
-        st.session_state.planner_input,
-        column_config={
-            "Branch": st.column_config.SelectboxColumn("Branch Destination", options=st.session_state.branches_df["Branches"].tolist(), required=True),
-            "Item": st.column_config.SelectboxColumn("Item Description", options=st.session_state.items_df["Item Description"].tolist(), required=True),
-            "Qty": st.column_config.NumberColumn("Quantity", min_value=0, step=1)
-        },
-        num_rows="dynamic",
-        use_container_width=True,
-        key="dispatch_grid"
-    )
+    # 2. Rapid Entry Bar with Cascading Dropdowns
+    with st.container(border=True):
+        c1, c2, c3, c4, c5 = st.columns([2, 2, 3, 1, 1])
+        
+        with c1:
+            # Dropdown 1: Area
+            unique_areas = sorted(st.session_state.branches_df['Area'].unique())
+            sel_area = st.selectbox("1. Select Area", unique_areas)
+            
+        with c2:
+            # Dropdown 2: Branch (Cascading - Filtered by Area)
+            filtered_branches = st.session_state.branches_df[st.session_state.branches_df['Area'] == sel_area]['Branches'].tolist()
+            sel_branch = st.selectbox("2. Select Branch", filtered_branches)
+            
+        with c3:
+            # Dropdown 3: Item
+            sel_item = st.selectbox("3. Select Item", st.session_state.items_df["Item Description"].tolist())
+            
+        with c4:
+            # Input 4: Quantity
+            sel_qty = st.number_input("4. Qty", min_value=1, step=1, value=1)
+            
+        with c5:
+            st.write("") # Vertical spacing alignment
+            st.write("")
+            if st.button("➕ Add", use_container_width=True):
+                # Add the selection to our session state list
+                st.session_state.planner_input.append({
+                    "Area": sel_area,
+                    "Branch": sel_branch,
+                    "Item": sel_item,
+                    "Qty": sel_qty
+                })
+                st.rerun() # Refresh to update grid
+                
+    st.markdown("### 2. Review & Edit Loadout")
+    # Convert list to DataFrame for the Data Editor
+    current_loadout_df = pd.DataFrame(st.session_state.planner_input)
     
+    if not current_loadout_df.empty:
+        # Display the editable grid so users can still tweak quantities or delete mistakes
+        edited_df = st.data_editor(
+            current_loadout_df,
+            column_config={
+                "Area": st.column_config.TextColumn("Area", disabled=True),
+                "Branch": st.column_config.TextColumn("Branch", disabled=True),
+                "Item": st.column_config.TextColumn("Item", disabled=True),
+                "Qty": st.column_config.NumberColumn("Quantity", min_value=1, step=1)
+            },
+            num_rows="dynamic",
+            use_container_width=True,
+            key="dispatch_grid"
+        )
+        
+        # Save back any manual edits (like deleting a row or changing qty) to session state
+        st.session_state.planner_input = edited_df.to_dict('records')
+    else:
+        st.info("Your loadout is empty. Use the bar above to add items.")
+        edited_df = pd.DataFrame(columns=["Area", "Branch", "Item", "Qty"])
+
     # 3. Real-Time Calculations
     valid_entries = edited_df.dropna(subset=["Branch", "Item"])
-    valid_entries = valid_entries[valid_entries["Qty"] > 0]
     
     total_index = 0
     if not valid_entries.empty:
+        valid_entries = valid_entries[valid_entries["Qty"] > 0]
         valid_entries = valid_entries.merge(st.session_state.items_df, how="left", left_on="Item", right_on="Item Description")
         valid_entries["Total Index"] = valid_entries["Qty"] * valid_entries["Index Size"]
         total_index = valid_entries["Total Index"].sum()
@@ -258,29 +308,42 @@ with tab1:
     c1, c2 = st.columns([1, 4])
     with c1:
         if st.button("💾 Save to Weekly Summary", type="primary"):
-            new_record = pd.DataFrame([{
-                "Date": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
-                "Initial Truck": primary_truck,
-                "Spillover Truck": auto_truck if spillover > 0 else "None",
-                "Total Index Load": total_index
-            }])
-            st.session_state.weekly_plan = pd.concat([st.session_state.weekly_plan, new_record], ignore_index=True)
-            st.success("Saved successfully!")
+            if not valid_entries.empty:
+                records = []
+                current_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                
+                for _, row in valid_entries.iterrows():
+                    records.append({
+                        "Date": current_time,
+                        "Initial Truck": primary_truck,
+                        "Area": row["Area"],
+                        "Branch": row["Branch"],
+                        "Unit Allocated": row["Item"],
+                        "Quantity": row["Qty"],
+                        "Spillover Truck": auto_truck if spillover > 0 else "None",
+                        "Total Index Load": total_index
+                    })
+                
+                new_records_df = pd.DataFrame(records)
+                st.session_state.weekly_plan = pd.concat([st.session_state.weekly_plan, new_records_df], ignore_index=True)
+                st.success("Detailed dispatches saved successfully!")
+            else:
+                st.warning("No items added to the loadout yet.")
+                
     with c2:
-        if st.button("🗑️ Clear Grid"):
-            # Simply resets the grid to 5 empty rows
-            st.session_state.planner_input = pd.DataFrame([{"Branch": None, "Item": None, "Qty": 0} for _ in range(5)])
+        if st.button("🗑️ Clear Entire Loadout"):
+            st.session_state.planner_input = []
             st.rerun()
 
 # --- TAB 2: Weekly Allocation Summary ---
 with tab2:
     st.header("Weekly Allocation Summary")
-    st.info("This table tracks all daily loads you have saved. You can export this for management reporting.")
+    st.info("This table tracks granular daily loads including destination branches, areas, and specific unit allocations.")
     
     if not st.session_state.weekly_plan.empty:
         st.dataframe(st.session_state.weekly_plan, use_container_width=True)
         csv = st.session_state.weekly_plan.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Export Weekly Summary to CSV", data=csv, file_name='weekly_allocation_summary.csv', mime='text/csv')
+        st.download_button(label="📥 Export Detailed Weekly Summary to CSV", data=csv, file_name='weekly_allocation_summary_detailed.csv', mime='text/csv')
     else:
         st.write("No dispatches saved yet. Go to the Daily Dispatch Planner and save a load.")
 
