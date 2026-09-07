@@ -305,13 +305,25 @@ with tab1:
     # 2. Visual Progress Bar
     st.progress(utilization_pct, text=f"Truck Utilization: {int(total_index / truck_capacity * 100)}%")
     
-    # 3. Clean metrics without the hard-to-read delta
+    # 3. Wrapping Text Metrics (Fixes cut-off words)
     with st.container(border=True):
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Load Index", f"{total_index:.2f}")
-        col2.metric("Initial Truck Status", status)
-        col3.metric("Spillover Index", f"{spillover:.2f}")
-        col4.metric("Auto-Assigned Truck", auto_truck)
+        # We use custom ratios [1, 1.5, 1, 2.5] to give the text columns more width
+        col1, col2, col3, col4 = st.columns([1, 1.5, 1, 2.5])
+        
+        with col1:
+            st.metric("Total Load Index", f"{total_index:.2f}")
+            
+        with col2:
+            st.caption("Initial Truck Status")
+            st.markdown(f"**{status}**") # Markdown allows text to wrap to the next line
+            
+        with col3:
+            st.metric("Spillover Index", f"{spillover:.2f}")
+            
+        with col4:
+            st.caption("Auto-Assigned Truck")
+            st.markdown(f"**{auto_truck}**") # No more cut-off text!
+            
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
     with c1:
