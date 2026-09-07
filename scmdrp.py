@@ -182,14 +182,12 @@ if 'branches_df' not in st.session_state:
         {"Branches": "MUTI CABADBARAN", "Area": "AREA VI"}
     ])
 
-# Added "Area" to Weekly Plan Tracking
 if 'weekly_plan' not in st.session_state:
     st.session_state.weekly_plan = pd.DataFrame(columns=[
         "Date", "Initial Truck", "Area", "Branch", "Unit Allocated", "Quantity", "Spillover Truck", "Total Index Load"
     ])
 
 if 'planner_input' not in st.session_state:
-    # Start with an empty list instead of pre-populating, since we now have an Add Bar
     st.session_state.planner_input = []
 
 # --- Create Application Tabs ---
@@ -197,62 +195,60 @@ tab1, tab2, tab3 = st.tabs(["📋 Daily Dispatch Planner", "📅 Weekly Allocati
 
 # --- TAB 1: Daily Dispatch Planner ---
 with tab1:
-    st.header("Daily Dispatch Configuration")
     
-    # 1. Select the Initial Truck for the Route
-    primary_truck = st.selectbox("Select Initial Truck:", st.session_state.trucks_df["Truck Desc"].tolist())
-    truck_capacity = st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0]
+    with st.container():
+        st.subheader("🚛 1. Select Initial Truck")
+        primary_truck = st.selectbox("Assign Primary Truck for this Route:", st.session_state.trucks_df["Truck Desc"].tolist(), label_visibility="collapsed")
+        truck_capacity = st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0]
     
-    st.markdown("### 1. Add Items to Loadout")
-    st.caption("Select an Area to filter the Branches, pick an item, and click Add.")
+    st.markdown("---")
     
-    # 2. Rapid Entry Bar with Cascading Dropdowns
+    st.subheader("📦 2. Rapid Data Entry")
+    st.caption("Select Area to filter Branches, pick an Item, and click Add. You can edit or delete entries in the grid below.")
+    
     with st.container(border=True):
         c1, c2, c3, c4, c5 = st.columns([2, 2, 3, 1, 1])
         
         with c1:
-            # Dropdown 1: Area
             unique_areas = sorted(st.session_state.branches_df['Area'].unique())
-            sel_area = st.selectbox("Select Area", unique_areas)
+            sel_area = st.selectbox("1. Select Area", unique_areas)
             
         with c2:
-            # Dropdown 2: Branch (Cascading - Filtered by Area)
             filtered_branches = st.session_state.branches_df[st.session_state.branches_df['Area'] == sel_area]['Branches'].tolist()
-            sel_branch = st.selectbox("Select Branch", filtered_branches)
+            sel_branch = st.selectbox("2. Select Branch", filtered_branches)
             
         with c3:
-            # Dropdown 3: Item
-            sel_item = st.selectbox("Select Item", st.session_state.items_df["Item Description"].tolist())
+            sel_item = st.selectbox("3. Select Item", st.session_state.items_df["Item Description"].tolist())
             
         with c4:
-            # Input 4: Quantity
-            sel_qty = st.number_input("Qty", min_value=1, step=1, value=1)
+            sel_qty = st.number_input("4. Qty", min_value=1, step=1, value=1)
             
         with c5:
-            st.write("") # Vertical spacing alignment
+            st.write("") 
             st.write("")
             if st.button("➕ Add", use_container_width=True):
-                # Add the selection to our session state list
                 st.session_state.planner_input.append({
                     "Area": sel_area,
                     "Branch": sel_branch,
                     "Item": sel_item,
                     "Qty": sel_qty
                 })
-                st.rerun() # Refresh to update grid
+                st.toast(f"✅ Added {sel_qty}x {sel_item} to loadout!")
+                st.rerun() 
                 
-    st.markdown("### 2. Review & Edit Loadout")
-    # Convert list to DataFrame for the Data Editor
+    st.subheader("📝 3. Review & Edit Loadout")
+    st.caption("**How to Delete a row:** Click the gray box on the far left of the row, then press your `Delete` key (or click the trash icon in the top right of the grid).")
+    
     current_loadout_df = pd.DataFrame(st.session_state.planner_input)
     
     if not current_loadout_df.empty:
-        # Display the editable grid so users can still tweak quantities or delete mistakes
+        # Made columns editable via dropdowns instead of disabled text
         edited_df = st.data_editor(
             current_loadout_df,
             column_config={
-                "Area": st.column_config.TextColumn("Area", disabled=True),
-                "Branch": st.column_config.TextColumn("Branch", disabled=True),
-                "Item": st.column_config.TextColumn("Item", disabled=True),
+                "Area": st.column_config.SelectboxColumn("Area", options=unique_areas, required=True),
+                "Branch": st.column_config.SelectboxColumn("Branch", options=st.session_state.branches_df['Branches'].tolist(), required=True),
+                "Item": st.column_config.SelectboxColumn("Item", options=st.session_state.items_df["Item Description"].tolist(), required=True),
                 "Qty": st.column_config.NumberColumn("Quantity", min_value=1, step=1)
             },
             num_rows="dynamic",
@@ -260,13 +256,11 @@ with tab1:
             key="dispatch_grid"
         )
         
-        # Save back any manual edits (like deleting a row or changing qty) to session state
         st.session_state.planner_input = edited_df.to_dict('records')
     else:
-        st.info("Your loadout is empty. Use the bar above to add items.")
+        st.info("Your loadout is empty. Use the rapid entry bar above to add items.")
         edited_df = pd.DataFrame(columns=["Area", "Branch", "Item", "Qty"])
 
-    # 3. Real-Time Calculations
     valid_entries = edited_df.dropna(subset=["Branch", "Item"])
     
     total_index = 0
@@ -276,7 +270,6 @@ with tab1:
         valid_entries["Total Index"] = valid_entries["Qty"] * valid_entries["Index Size"]
         total_index = valid_entries["Total Index"].sum()
     
-    # Logic for Status Board
     spillover = max(0, total_index - truck_capacity)
     
     if total_index == 0:
@@ -294,20 +287,20 @@ with tab1:
         else:
             auto_truck = "🚨 MULTIPLE ADDITIONAL TRUCKS REQUIRED"
 
-    # 4. Real-Time Status Board
     st.markdown("---")
-    st.subheader("Real-Time Capacity Status")
+    st.subheader("📊 4. Real-Time Capacity Status")
     
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Load Index", f"{total_index:.2f}")
-    col2.metric("Initial Truck Status", status)
-    col3.metric("Spillover Index (Unassigned)", f"{spillover:.2f}")
-    col4.metric("Auto-Assigned Additional Truck", auto_truck)
+    with st.container(border=True):
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Total Load Index", f"{total_index:.2f}")
+        col2.metric("Initial Truck Status", status)
+        col3.metric("Spillover Index (Unassigned)", f"{spillover:.2f}")
+        col4.metric("Auto-Assigned Additional Truck", auto_truck)
     
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
     with c1:
-        if st.button("💾 Save to Weekly Summary", type="primary"):
+        if st.button("💾 Save to Weekly Summary", type="primary", use_container_width=True):
             if not valid_entries.empty:
                 records = []
                 current_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
@@ -326,13 +319,16 @@ with tab1:
                 
                 new_records_df = pd.DataFrame(records)
                 st.session_state.weekly_plan = pd.concat([st.session_state.weekly_plan, new_records_df], ignore_index=True)
-                st.success("Detailed dispatches saved successfully!")
+                
+                # Replaced static success with a pop-up Toast
+                st.toast("🎉 Detailed dispatches saved to Weekly Summary successfully!", icon="✅")
             else:
-                st.warning("No items added to the loadout yet.")
+                st.toast("⚠️ No items added to the loadout yet.", icon="⚠️")
                 
     with c2:
         if st.button("🗑️ Clear Entire Loadout"):
             st.session_state.planner_input = []
+            st.toast("🗑️ Loadout cleared.", icon="✅")
             st.rerun()
 
 # --- TAB 2: Weekly Allocation Summary ---
