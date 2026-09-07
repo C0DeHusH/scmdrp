@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 
 # --- Page Configuration ---
-st.set_page_config(page_title="SCM Delivery Requirements Plan", layout="wide", page_icon="🏍️")
-st.title("🏍️ SCM Delivery Requirements Plan")
+st.set_page_config(page_title="SCM Delivery Requirements Plan", layout="wide")
+st.title("SCM Delivery Requirements Plan")
 st.markdown("---")
 
 # --- Initialize Session State for Master Data (FULL LIST) ---
@@ -191,20 +191,20 @@ if 'planner_input' not in st.session_state:
     st.session_state.planner_input = []
 
 # --- Create Application Tabs ---
-tab1, tab2, tab3 = st.tabs(["📋 Daily Dispatch Planner", "📅 Weekly Allocation Summary", "⚙️ Master Data Management"])
+tab1, tab2, tab3 = st.tabs(["Daily Dispatch Planner", "Weekly Allocation Summary", "Master Data Management"])
 
 # --- TAB 1: Daily Dispatch Planner ---
 with tab1:
     
     with st.container():
-        st.subheader("🚛 1. Select Initial Truck")
+        st.subheader("1. Select Initial Truck")
         primary_truck = st.selectbox("Assign Primary Truck for this Route:", st.session_state.trucks_df["Truck Desc"].tolist(), label_visibility="collapsed")
         truck_capacity = st.session_state.trucks_df.loc[st.session_state.trucks_df['Truck Desc'] == primary_truck, 'Max Index'].values[0]
     
     st.markdown("---")
     
-    st.subheader("📦 2. Rapid Data Entry")
-    st.caption("Select Area to filter Branches, pick an Item, and click Add. You can edit or delete entries in the grid below.")
+    st.subheader("2. Rapid Data Entry")
+    st.caption("Select Area to filter Branches, pick an Item, and click Add Entry. You can modify or delete entries in the review grid below.")
     
     with st.container(border=True):
         c1, c2, c3, c4, c5 = st.columns([2, 2, 3, 1, 1])
@@ -226,23 +226,22 @@ with tab1:
         with c5:
             st.write("") 
             st.write("")
-            if st.button("➕ Add", use_container_width=True):
+            if st.button("Add Entry", use_container_width=True):
                 st.session_state.planner_input.append({
                     "Area": sel_area,
                     "Branch": sel_branch,
                     "Item": sel_item,
                     "Qty": sel_qty
                 })
-                st.toast(f"✅ Added {sel_qty}x {sel_item} to loadout!")
+                st.toast(f"Success: Added {sel_qty}x {sel_item} to loadout.")
                 st.rerun() 
                 
-    st.subheader("📝 3. Review & Edit Loadout")
-    st.caption("**How to Delete a row:** Click the gray box on the far left of the row, then press your `Delete` key (or click the trash icon in the top right of the grid).")
+    st.subheader("3. Review & Edit Loadout")
+    st.caption("**Row Deletion:** Select the box on the far left of the row, then press the Delete key (or use the trash icon in the top right).")
     
     current_loadout_df = pd.DataFrame(st.session_state.planner_input)
     
     if not current_loadout_df.empty:
-        # Made columns editable via dropdowns instead of disabled text
         edited_df = st.data_editor(
             current_loadout_df,
             column_config={
@@ -258,7 +257,7 @@ with tab1:
         
         st.session_state.planner_input = edited_df.to_dict('records')
     else:
-        st.info("Your loadout is empty. Use the rapid entry bar above to add items.")
+        st.info("The loadout is currently empty. Use the rapid entry bar above to configure items.")
         edited_df = pd.DataFrame(columns=["Area", "Branch", "Item", "Qty"])
 
     valid_entries = edited_df.dropna(subset=["Branch", "Item"])
@@ -275,9 +274,9 @@ with tab1:
     if total_index == 0:
         status = "AWAITING LOAD"
     elif spillover > 0:
-        status = "⚠️ OVERLOADED - SPILLOVER DETECTED"
+        status = "OVERLOADED - SPILLOVER DETECTED"
     else:
-        status = "✅ OPTIMAL LOAD"
+        status = "OPTIMAL LOAD"
         
     auto_truck = "N/A - NO OVERFLOW"
     if spillover > 0:
@@ -285,10 +284,10 @@ with tab1:
         if not available.empty:
             auto_truck = available.iloc[0]["Truck Desc"]
         else:
-            auto_truck = "🚨 MULTIPLE ADDITIONAL TRUCKS REQUIRED"
+            auto_truck = "MULTIPLE ADDITIONAL TRUCKS REQUIRED"
 
     st.markdown("---")
-    st.subheader("📊 4. Real-Time Capacity Status")
+    st.subheader("4. Real-Time Capacity Status")
     
     with st.container(border=True):
         col1, col2, col3, col4 = st.columns(4)
@@ -300,7 +299,7 @@ with tab1:
     st.markdown("---")
     c1, c2 = st.columns([1, 4])
     with c1:
-        if st.button("💾 Save to Weekly Summary", type="primary", use_container_width=True):
+        if st.button("Save to Weekly Summary", type="primary", use_container_width=True):
             if not valid_entries.empty:
                 records = []
                 current_time = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
@@ -320,15 +319,14 @@ with tab1:
                 new_records_df = pd.DataFrame(records)
                 st.session_state.weekly_plan = pd.concat([st.session_state.weekly_plan, new_records_df], ignore_index=True)
                 
-                # Replaced static success with a pop-up Toast
-                st.toast("🎉 Detailed dispatches saved to Weekly Summary successfully!", icon="✅")
+                st.toast("Success: Detailed dispatches saved to Weekly Summary.")
             else:
-                st.toast("⚠️ No items added to the loadout yet.", icon="⚠️")
+                st.toast("Alert: No items added to the loadout yet.")
                 
     with c2:
-        if st.button("🗑️ Clear Entire Loadout"):
+        if st.button("Clear Entire Loadout"):
             st.session_state.planner_input = []
-            st.toast("🗑️ Loadout cleared.", icon="✅")
+            st.toast("Success: Loadout cleared.")
             st.rerun()
 
 # --- TAB 2: Weekly Allocation Summary ---
@@ -339,7 +337,7 @@ with tab2:
     if not st.session_state.weekly_plan.empty:
         st.dataframe(st.session_state.weekly_plan, use_container_width=True)
         csv = st.session_state.weekly_plan.to_csv(index=False).encode('utf-8')
-        st.download_button(label="📥 Export Detailed Weekly Summary to CSV", data=csv, file_name='weekly_allocation_summary_detailed.csv', mime='text/csv')
+        st.download_button(label="Export Detailed Weekly Summary to CSV", data=csv, file_name='weekly_allocation_summary_detailed.csv', mime='text/csv')
     else:
         st.write("No dispatches saved yet. Go to the Daily Dispatch Planner and save a load.")
 
