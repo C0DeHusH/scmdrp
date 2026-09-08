@@ -70,29 +70,30 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- Helper Function for Smart Area-Based Assignment (With Priority) ---
-def assign_trucks_to_areas(area_summary_df, trucks_df, area_schedule_df):
-    """Assigns trucks prioritizing Area Schedule Priority first, then by load size."""
+# --- Helper Function for Smart Branch-Based Assignment (With Area Priority) ---
+def assign_trucks_to_branches(branch_summary_df, trucks_df, area_schedule_df):
+    """Assigns trucks per BRANCH, prioritizing Area Schedule Priority first, then by load size."""
     trip_pool = []
     for _, row in trucks_df.iterrows():
         trips = int(row.get("Weekly Trips", 1))
         for i in range(trips):
             trip_pool.append({
-                "Truck Desc": f"{row['Plate No.']} (Trip {i+1})",
+                # Clean name without trip consolidation text
+                "Truck Desc": row['Truck Desc'], 
                 "Max Index": row["Max Index"]
             })
             
     assignments = []
     
     # Merge with area schedule to get priorities
-    area_summary_df = area_summary_df.merge(area_schedule_df, on="Area", how="left")
+    branch_summary_df = branch_summary_df.merge(area_schedule_df, on="Area", how="left")
     # Default to lowest priority (99) if not defined
-    area_summary_df['Priority Level'] = pd.to_numeric(area_summary_df['Priority Level'], errors='coerce').fillna(99)
+    branch_summary_df['Priority Level'] = pd.to_numeric(branch_summary_df['Priority Level'], errors='coerce').fillna(99)
     
     # SORTING LOGIC: Priority Level (1 is highest), then Total Index (Largest load first)
-    area_summary_df = area_summary_df.sort_values(by=["Priority Level", "Total_Index"], ascending=[True, False])
+    branch_summary_df = branch_summary_df.sort_values(by=["Priority Level", "Total_Index"], ascending=[True, False])
     
-    for _, row in area_summary_df.iterrows():
+    for _, row in branch_summary_df.iterrows():
         remaining_load = row["Total_Index"]
         assigned_trucks = []
         total_cap = 0
@@ -121,8 +122,8 @@ def assign_trucks_to_areas(area_summary_df, trucks_df, area_schedule_df):
         assignments.append({
             "Priority": priority_lvl,
             "Area": row["Area"],
-            "Included Branches": row["Branches"],
-            "Total Area Index": round(row["Total_Index"], 2),
+            "Branch": row["Branch"],
+            "Total Branch Index": round(row["Total_Index"], 2),
             "Assigned Trucks": ", ".join(assigned_trucks) if assigned_trucks else "None Available",
             "Total Assigned Cap": total_cap,
             "Underutilized Space": round(under_util, 2),
@@ -477,25 +478,27 @@ with tab1:
         master_clean = st.session_state.area_schedule_df[~st.session_state.area_schedule_df["Area"].isin(active_areas)]
         st.session_state.area_schedule_df = pd.concat([master_clean, edited_schedule], ignore_index=True)
         
+        # Calculate valid items and group by BRANCH
         valid_entries["Qty"] = pd.to_numeric(valid_entries["Qty"], errors='coerce').fillna(0)
         valid_entries = valid_entries[valid_entries["Qty"] > 0]
         valid_entries = valid_entries.merge(st.session_state.items_df, how="left", left_on="Item", right_on="Item Description")
         valid_entries["Total Index"] = valid_entries["Qty"] * valid_entries["Index Size"]
         
-        area_summary = valid_entries.groupby("Area").agg(
-            Branches=('Branch', lambda x: ', '.join(sorted(set(x)))),
+        # We group by BRANCH now instead of AREA
+        branch_summary = valid_entries.groupby(["Area", "Branch"]).agg(
             Total_Index=('Total Index', 'sum')
         ).reset_index()
         
-        insight_df, remaining_pool = assign_trucks_to_areas(area_summary, st.session_state.trucks_df, edited_schedule)
+        insight_df, remaining_pool = assign_trucks_to_branches(branch_summary, st.session_state.trucks_df, edited_schedule)
         
-        assignment_mapping = dict(zip(insight_df["Area"], insight_df["Assigned Trucks"]))
+        # Mappings based on Branch
+        assignment_mapping = dict(zip(insight_df["Branch"], insight_df["Assigned Trucks"]))
         priority_mapping = dict(zip(insight_df["Area"], insight_df["Priority"]))
         
         st.markdown("---")
-        st.subheader("🧠 5. AI Smart Assignment (Priority Optimized)")
+        st.subheader("🧠 5. AI Smart Assignment (Per Branch)")
         
-        total_index_all = area_summary["Total_Index"].sum()
+        total_index_all = branch_summary["Total_Index"].sum()
         total_fleet_cap = sum(row["Max Index"] * int(row.get("Weekly Trips", 1)) for _, row in st.session_state.trucks_df.iterrows())
         remaining_fleet_cap = sum(t["Max Index"] for t in remaining_pool)
         
@@ -532,7 +535,7 @@ with tab1:
                         "Branch": row["Branch"],
                         "Unit Allocated": row["Item"],
                         "Quantity": row["Qty"],
-                        "Assigned Truck(s)": assignment_mapping.get(row["Area"], "None"),
+                        "Assigned Truck(s)": assignment_mapping.get(row["Branch"], "None"),
                         "Total Index Load": row["Total Index"]
                     })
                 
